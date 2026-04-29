@@ -1,0 +1,14 @@
+{
+  "name": "bakery-raw-inventory-server",
+  "version": "1.0.0",
+  "description": "Express backend for the Bakery Raw Inventory app — persisted /bakeryRaw/state endpoint",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.0.0"
+  }
+}

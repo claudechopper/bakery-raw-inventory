@@ -1,0 +1,1981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Micro Bakery — Raw Inventory Prototype</title>
+<style>
+  :root {
+    --primary: #7a4f2e;
+    --primary-light: #b8845a;
+    --gold: #c8a030;
+    --bg: #faf7f2;
+    --card-bg: #ffffff;
+    --text-main: #2c1a0e;
+    --text-muted: #7a5c3f;
+    --border: #e6dac3;
+    --danger: #b03030;
+    --danger-bg: #fdf2f2;
+    --warning: #c07820;
+    --success: #3d7a52;
+    --radius: 12px;
+    --tap: 44px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: var(--bg); color: var(--text-main); padding-bottom: 80px; }
+
+  /* Header */
+  header {
+    background: var(--primary);
+    color: white;
+    padding: 14px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  h1 { font-size: 1.15rem; font-weight: 600; }
+  .date-picker-wrap { display: flex; align-items: center; gap: 10px; }
+  .date-hint {
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #fde047;
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+    text-shadow: 0 0 8px rgba(253, 224, 71, 0.55), 0 1px 2px rgba(0,0,0,0.35);
+    animation: date-hint-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes date-hint-pulse {
+    0%, 100% { transform: translateX(0); opacity: 1; }
+    50% { transform: translateX(-6px); opacity: 0.85; }
+  }
+  .date-picker {
+    background: rgba(255,255,255,0.2);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border: 2px solid #fde047;
+    color: white;
+    cursor: pointer;
+    box-shadow: 0 0 0 0 rgba(253, 224, 71, 0.6);
+    animation: date-picker-glow 1.4s ease-in-out infinite;
+  }
+  @keyframes date-picker-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(253, 224, 71, 0.55); }
+    50%      { box-shadow: 0 0 0 6px rgba(253, 224, 71, 0.0); }
+  }
+  /* Dismissed state — triggered once user has chosen the date OR 30s passes */
+  .date-picker-wrap.dismissed .date-hint {
+    animation: none;
+    transform: none;
+    opacity: 0.6;
+    color: rgba(255,255,255,0.75);
+    text-shadow: none;
+    font-weight: 600;
+    font-size: 0.78rem;
+  }
+  .date-picker-wrap.dismissed .date-picker {
+    animation: none;
+    border-color: rgba(255,255,255,0.2);
+    box-shadow: none;
+  }
+  /* Count-tab variant — red/amber theme for light cream background */
+  .date-hint.count-variant {
+    color: #b91c1c;
+    text-shadow: 0 0 8px rgba(185,28,28,0.45), 0 1px 2px rgba(0,0,0,0.15);
+  }
+  .date-picker.count-variant {
+    background: #fff;
+    color: #4a2c12;
+    border-color: #b91c1c;
+    animation-name: date-picker-glow-red;
+  }
+  @keyframes date-picker-glow-red {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(185,28,28,0.55); }
+    50%      { box-shadow: 0 0 0 6px rgba(185,28,28,0.0); }
+  }
+  /* Slow, gentle golden glow for the light-green "Create Lists" primary action */
+  @keyframes create-lists-glow {
+    0%, 100% { box-shadow: 0 0 4px 0 rgba(212, 160, 23, 0.28); }
+    50%      { box-shadow: 0 0 10px 1px rgba(234, 179, 8, 0.45); }
+  }
+  .create-lists-btn {
+    animation: create-lists-glow 3.8s ease-in-out infinite;
+  }
+  /* Dismissed overrides for count variant (so we don't fade to near-invisible on cream bg) */
+  .date-picker-wrap.dismissed .date-hint.count-variant {
+    color: #4a2c12;
+    opacity: 0.55;
+  }
+  .date-picker-wrap.dismissed .date-picker.count-variant {
+    border-color: rgba(74,44,18,0.25);
+  }
+  .controls { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+  .chip-btn {
+    background: var(--card-bg);
+    color: var(--primary);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 0 14px;
+    min-height: 36px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .chip-btn.active { background: var(--gold); color: white; border-color: var(--gold); }
+
+  /* Layout: main + sidebar on wide screens */
+  .layout {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 16px;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 900px) {
+    .layout { grid-template-columns: 1fr 320px; }
+  }
+
+  .group-title {
+    font-size: 1rem;
+    color: var(--primary);
+    margin: 16px 0 10px;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 4px;
+    font-weight: 700;
+  }
+  .group-title:first-child { margin-top: 0; }
+
+  .card-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  @media (min-width: 600px) {
+    .card-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  }
+
+  /* Cards */
+  .card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 14px;
+    box-shadow: 0 2px 6px rgba(122,79,46,0.08);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .card.action-needed { border-color: var(--danger); background: var(--danger-bg); }
+  .item-name { font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; }
+  .item-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.75rem; }
+  .badge {
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    font-weight: 600;
+  }
+  .badge.p1 { border-color: var(--success); color: var(--success); }
+  .badge.p2 { border-color: var(--warning); color: var(--warning); }
+  .badge.p3 { border-color: var(--danger); color: var(--danger); }
+  .badge.multi { background: var(--primary); color: white; border: none; }
+
+  .qty-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg);
+    padding: 8px 10px;
+    border-radius: 8px;
+  }
+  .qty-info { font-size: 0.8rem; color: var(--text-muted); }
+  .qty-info strong { color: var(--text-main); font-size: 0.95rem; }
+  .qty-controls { display: flex; align-items: center; gap: 6px; }
+  .qty-btn {
+    min-width: var(--tap); min-height: var(--tap);
+    border-radius: 8px; border: 1px solid var(--border);
+    background: white; font-size: 1.2rem; color: var(--primary); cursor: pointer;
+    font-weight: 700;
+  }
+  .qty-btn:active { background: var(--bg); }
+  .qty-input {
+    width: 54px; min-height: var(--tap);
+    text-align: center; font-size: 1rem;
+    border: 1px solid var(--border); border-radius: 8px;
+    font-weight: 700; background: white;
+  }
+
+  /* Suppliers */
+  .supplier-list { display: flex; flex-direction: column; gap: 6px; }
+  .supplier-row {
+    display: flex; align-items: center; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: 8px;
+    min-height: var(--tap); cursor: pointer;
+    transition: all 0.15s;
+  }
+  .supplier-row:hover:not(.unavailable) { background: var(--bg); }
+  .supplier-row.unavailable { opacity: 0.55; background: #f5f0e6; cursor: not-allowed; }
+  .supplier-row.selected { border-color: var(--gold); background: rgba(200,160,48,0.12); }
+  .supplier-radio { margin-right: 10px; width: 18px; height: 18px; accent-color: var(--primary); }
+  .supplier-details { flex-grow: 1; display: flex; flex-direction: column; }
+  .supplier-name { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 6px; }
+  .supplier-note { font-size: 0.7rem; color: var(--text-muted); }
+  .supplier-icons { display: inline-flex; gap: 3px; font-size: 1rem; }
+  .expand-btn {
+    background: transparent; border: none; color: var(--primary);
+    font-weight: 600; min-height: 36px; cursor: pointer;
+    text-align: left; padding: 4px; font-size: 0.85rem;
+  }
+  .grocery-fallback {
+    font-size: 0.8rem; color: var(--primary);
+    display: flex; align-items: center; gap: 6px;
+    font-weight: 500;
+  }
+  .action-needed-header { color: var(--danger); }
+  .error-text { color: var(--danger); font-weight: 600; font-size: 0.8rem; }
+
+  /* Right sidebar (summary) */
+  .sidebar {
+    position: sticky;
+    top: 110px;
+    height: fit-content;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    box-shadow: 0 2px 6px rgba(122,79,46,0.08);
+  }
+  .sidebar h3 { font-size: 1rem; color: var(--primary); margin-bottom: 10px; border-bottom: 2px solid var(--border); padding-bottom: 6px; }
+  .summary-supplier {
+    margin-bottom: 14px;
+    padding: 10px;
+    background: #ebe0ce;
+    border: 1.5px solid #7a4f2e;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  }
+  .summary-supplier-name {
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: #0d3a5c;
+    background: #c7e4f5;
+    border: 2px solid #5aa3d1;
+    padding: 6px 10px;
+    border-radius: 8px;
+    margin: -4px -4px 8px -4px;
+    display: block;
+  }
+  .summary-line { font-size: 0.8rem; color: var(--text-main); padding: 2px 0; }
+  .summary-count { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
+  .export-btn {
+    background: var(--primary); color: white; border: none;
+    border-radius: 8px; min-height: var(--tap);
+    width: 100%; font-size: 1rem; font-weight: 600;
+    cursor: pointer; margin-top: 8px;
+    box-shadow: 0 2px 4px rgba(122,79,46,0.25);
+  }
+  .export-btn:active { transform: translateY(1px); }
+
+  /* Count tab */
+  .count-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; background: var(--card-bg);
+    border: 1px solid var(--border); border-radius: 10px;
+    margin-bottom: 6px;
+  }
+  .count-name { flex: 1; font-weight: 500; font-size: 0.95rem; }
+  .count-room { font-size: 0.7rem; color: var(--text-muted); }
+  .count-input {
+    width: 72px; min-height: var(--tap);
+    border: 1.5px solid var(--border); border-radius: 8px;
+    text-align: center; font-size: 1rem; font-weight: 700;
+    background: var(--bg);
+  }
+  .count-unit { font-size: 0.75rem; color: var(--text-muted); min-width: 40px; }
+  .progress-bar {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .progress-fill { font-weight: 700; color: var(--success); }
+
+  /* Settings tab */
+  .settings-section {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
+  }
+  /* Distinct shade per category so they're visually distinguishable */
+  .settings-section[data-section="saved"]     { background: #fdecce; border-color: #c98f3a; }  /* amber — ready to order */
+  .settings-section[data-section="history"]   { background: #d6ead6; border-color: #4e8754; }  /* green — completed/settled */
+  .settings-section[data-section="items"]     { background: #d9e4f4; border-color: #567dae; }  /* blue — master data */
+  .settings-section[data-section="rooms"]     { background: #ead9c7; border-color: #a17a52; }  /* warm taupe — physical */
+  .settings-section[data-section="suppliers"] { background: #c9e6e6; border-color: #4f9494; }  /* teal — partners */
+  .settings-section[data-section="tags"]      { background: #f2d7e0; border-color: #b45f7d; }  /* rose — labels */
+  .settings-section[data-section="csv"]       { background: #ece8d2; border-color: #8a7f4f; }  /* parchment — import */
+  .settings-section[data-section="sync"]      { background: #d9dde3; border-color: #6b7380; }  /* slate — infra */
+  .settings-section h3 { color: var(--primary); margin-bottom: 10px; font-size: 1rem; }
+  .settings-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0; border-bottom: 1px solid var(--border); gap: 10px;
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-row input, .settings-row select {
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 0.85rem; background: white;
+  }
+  .add-btn {
+    background: var(--primary-light); color: white; border: none;
+    border-radius: 8px; padding: 8px 14px; font-size: 0.85rem;
+    font-weight: 600; cursor: pointer; margin-top: 10px;
+  }
+
+  /* Bottom nav */
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: white; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-around;
+    padding: 6px 0 10px; z-index: 100;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+  }
+  .nav-btn {
+    flex: 1; background: transparent; border: none;
+    padding: 6px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    color: var(--text-muted); font-size: 0.7rem; font-weight: 600;
+  }
+  .nav-btn .icon { font-size: 1.4rem; }
+  .nav-btn.active { color: var(--primary); }
+  .nav-btn.active .icon { transform: scale(1.1); }
+
+  .hidden { display: none !important; }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; padding: 20px;
+  }
+  .modal {
+    background: white; border-radius: var(--radius);
+    max-width: 500px; width: 100%; max-height: 80vh;
+    overflow-y: auto; padding: 20px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+  }
+  .modal h3 { color: var(--danger); margin-bottom: 10px; font-size: 1.1rem; }
+  .modal-orphan-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px; border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: 6px; gap: 10px;
+  }
+  .modal-actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  .modal-btn {
+    padding: 10px 14px; border-radius: 8px; font-weight: 600;
+    font-size: 0.9rem; cursor: pointer; border: 1px solid var(--border);
+    flex: 1; min-height: 44px;
+  }
+  .modal-btn.primary { background: var(--primary); color: white; border-color: var(--primary); }
+  .modal-btn.danger { background: var(--danger); color: white; border-color: var(--danger); }
+  .modal-btn.secondary { background: white; color: var(--text-main); }
+
+  .item-row-highlight {
+    background: #fff3d6 !important;
+    box-shadow: 0 0 0 3px var(--gold);
+  }
+
+  /* Order rows (replaces cards) */
+  .order-row {
+    display: grid;
+    grid-template-columns: 36px 36px 130px 1fr 170px;
+    gap: 6px;
+    align-items: center;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+  }
+  .order-row.action-needed { border-color: var(--danger); background: var(--danger-bg); }
+  .order-row.no-need { opacity: 0.55; }
+  .col-num {
+    text-align: center;
+    font-weight: 700;
+    padding: 4px 0;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+  .col-thresh { background: #f0e8d8; color: var(--text-muted); }
+  .col-stock { background: #e8f0e8; color: var(--success); }
+  .col-need { background: var(--bg); color: var(--primary); border: 1px solid var(--border); cursor: pointer; }
+  .col-need.urgent { background: #fde4e4; color: var(--danger); border-color: var(--danger); font-weight: 800; }
+  .col-need.zero { background: #f0f0f0; color: #aaa; }
+  .col-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .col-name-text { font-weight: 700; color: var(--text-main); }
+  .col-name-meta { font-size: 0.7rem; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px; }
+  .col-name-meta .badge { padding: 1px 6px; font-size: 0.65rem; }
+  .supplier-select {
+    width: 100%; padding: 6px 8px;
+    border: 1px solid var(--border); border-radius: 6px;
+    font-size: 0.8rem; background: white; min-height: 36px;
+  }
+  .supplier-select.no-sup { border-color: var(--danger); color: var(--danger); }
+  .send-row-btn {
+    background: var(--primary); color: white; border: none;
+    border-radius: 6px; padding: 6px 8px; font-size: 0.75rem;
+    font-weight: 700; cursor: pointer; min-height: 36px; white-space: nowrap;
+  }
+  .send-row-btn:disabled { background: #ccc; cursor: not-allowed; }
+  .row-icons { display: inline-flex; gap: 3px; font-size: 0.85rem; margin-left: 6px; }
+
+  @media (max-width: 700px) {
+    .order-row { grid-template-columns: 32px 32px 38px 1fr; }
+    .order-row .supplier-select, .order-row .send-row-btn {
+      grid-column: 1 / -1; margin-top: 4px;
+    }
+  }
+
+  .summary-line-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 3px 0; gap: 6px;
+  }
+  .summary-line-text { flex: 1; font-size: 0.8rem; }
+  .delete-line-btn {
+    background: transparent; border: none; color: var(--danger);
+    font-size: 1rem; cursor: pointer; padding: 2px 6px; line-height: 1;
+  }
+  .delete-line-btn:hover { background: var(--danger-bg); border-radius: 4px; }
+
+  .count-done-bar {
+    display: flex; justify-content: flex-end;
+    margin: 16px 0 8px;
+  }
+  .count-done-btn {
+    background: var(--success); color: white; border: none;
+    padding: 8px 14px; border-radius: 8px;
+    font-weight: 600; font-size: 0.85rem; cursor: pointer;
+    box-shadow: 0 2px 4px rgba(61,122,82,0.25);
+  }
+  .count-mini-btn {
+    min-width: 36px; min-height: 36px;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: white; font-size: 1.1rem; font-weight: 700;
+    color: var(--primary); cursor: pointer;
+  }
+  .count-mini-btn:active { background: var(--bg); }
+
+  /* Supplier draft sections */
+  .draft-section {
+    margin-bottom: 24px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 2px solid var(--border);
+    background: var(--card-bg);
+  }
+  .draft-section.urgent { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(176,48,48,0.1); }
+  .draft-section.upcoming { border-color: var(--warning); }
+  .draft-section.action { border-color: var(--text-muted); background: #f5f0e6; }
+  .draft-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; gap: 10px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .draft-section.urgent .draft-header { background: #fdf2f2; }
+  .draft-section.upcoming .draft-header { background: #fdf6e8; }
+  .draft-title { font-weight: 700; font-size: 1rem; color: var(--primary); }
+  .draft-status {
+    font-size: 0.75rem; font-weight: 700;
+    padding: 4px 10px; border-radius: 12px;
+    background: white; border: 1px solid var(--border);
+  }
+  .draft-status.urgent { background: var(--danger); color: white; border-color: var(--danger); }
+  .draft-status.upcoming { background: var(--warning); color: white; border-color: var(--warning); }
+  .draft-status.action { background: var(--text-muted); color: white; }
+  .draft-send-btn {
+    background: var(--success); color: white; border: none;
+    padding: 8px 16px; border-radius: 8px; font-weight: 600;
+    font-size: 0.85rem; cursor: pointer; min-height: 36px;
+  }
+  .draft-send-btn:disabled { background: #ccc; cursor: not-allowed; }
+  .draft-body { padding: 12px; }
+  .draft-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+  /* Cloud sync pull-bar (top of Ordering + Count tabs) */
+  .sync-pull-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; margin: 0 0 12px 0;
+    background: #fff8ec;
+    border: 1.5px solid #e6dac3;
+    border-radius: 10px;
+  }
+  .sync-pull-btn {
+    background: #5a9d78; color: white;
+    border: 2px solid #3d7a52;
+    padding: 10px 16px; border-radius: 8px;
+    font-size: 0.9rem; font-weight: 700; cursor: pointer;
+    min-height: 42px; white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(61,122,82,0.2);
+  }
+  .sync-pull-btn:hover { background: #4a8c68; }
+  .sync-pull-btn:active { transform: translateY(1px); }
+  .sync-status-chip {
+    flex: 1; min-width: 0;
+    font-size: 0.78rem; font-weight: 500;
+    color: #7a5c3f;
+    border: 1px solid #e6dac3;
+    padding: 6px 10px; border-radius: 6px;
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <h1 id="page-title">Raw Ordering</h1>
+    <div class="date-picker-wrap" id="order-date-wrap">
+      <span class="date-hint">CHOOSE ORDER DATE 👉</span>
+      <input type="date" class="date-picker" id="order-date" value="2026-04-20">
+    </div>
+  </div>
+  <div class="controls" id="ordering-controls">
+    <button class="chip-btn active" onclick="setGroupMode('raw')" id="btn-group-raw">📄 Raw List</button>
+    <button class="chip-btn" onclick="setGroupMode('room')" id="btn-group-room">By Room</button>
+    <button class="chip-btn" onclick="setGroupMode('supplier')" id="btn-group-supplier">By Supplier</button>
+    <select id="btn-group-tag" class="chip-btn" style="padding:0 10px;appearance:none;-webkit-appearance:none;padding-right:24px;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 14px) 50%,calc(100% - 9px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;" onchange="setGroupMode('tag', this.value)">
+      <option value="">— By Tag —</option>
+      <option value="__all__">All tags (grouped)</option>
+    </select>
+    <button class="chip-btn" onclick="setGroupMode('priority')" id="btn-group-priority">By Priority</button>
+  </div>
+  <div class="controls hidden" id="count-controls">
+    <button class="chip-btn active" onclick="setCountGroup('room')" id="btn-count-room">By Room</button>
+    <button class="chip-btn" onclick="setCountGroup('supplier')" id="btn-count-supplier">By Supplier</button>
+    <select id="btn-count-tag" class="chip-btn" style="padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#fff;font-size:0.75rem;" onchange="setCountGroup('tag', this.value)">
+      <option value="">— By Tag —</option>
+      <option value="__all__">All tags (grouped)</option>
+    </select>
+    <button class="chip-btn" onclick="setCountGroup('all')" id="btn-count-all">All (flat)</button>
+  </div>
+</header>
+
+<!-- ORDERING TAB -->
+<div class="layout" id="tab-ordering">
+  <div>
+    <div class="sync-pull-bar">
+      <button class="sync-pull-btn" onclick="pullFromCloud()" title="Replace local data with what's on the cloud">🔄 Pull Latest</button>
+      <span id="ordering-sync-status" class="sync-status-chip">Local only — set Railway URL in Settings to sync</span>
+    </div>
+    <div id="main-content"></div>
+  </div>
+  <aside class="sidebar" id="summary-sidebar">
+    <h3>📦 Order Summary</h3>
+    <div id="summary-content"></div>
+    <button class="export-btn create-lists-btn" onclick="createAllLists()" style="background:#8edf99;color:#1a3d22;border:3px solid #d4a017;">📋 Create Lists (from all items)</button>
+    <button class="export-btn" onclick="saveAllLists()" style="margin-top:8px;background:#b8e0a8;color:#1a3d22;border:3px solid #000;">💾 Save Lists to Sam</button>
+  </aside>
+</div>
+
+<!-- COUNT TAB -->
+<div class="layout hidden" id="tab-count">
+  <div>
+    <div class="sync-pull-bar">
+      <button class="sync-pull-btn" onclick="pullFromCloud()" title="Replace local data with what's on the cloud">🔄 Pull Latest</button>
+      <span id="count-sync-status" class="sync-status-chip">Local only — set Railway URL in Settings to sync</span>
+    </div>
+    <div class="date-picker-wrap" id="count-date-wrap" style="margin:0 0 8px 0;gap:10px;">
+      <span style="font-weight:600;color:#4a2c12;">📅 Count date:</span>
+      <span class="date-hint count-variant">CHOOSE 👉</span>
+      <input type="date" class="date-picker count-variant" id="count-date" value="2026-04-19">
+    </div>
+    <div class="progress-bar">
+      <div>Counting on: <strong id="week-label" style="color:#7a4b10;">—</strong></div>
+      <div><span class="progress-fill" id="count-progress">0</span> / <span id="count-total">8</span> counted</div>
+    </div>
+    <div id="count-content"></div>
+    <div class="count-done-bar">
+      <button class="count-done-btn" onclick="sendCountToOrder()">✅ Done — Send to Sam</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS TAB -->
+<div class="layout hidden" id="tab-settings">
+  <div>
+    <div class="settings-section" data-section="saved">
+      <h3>📋 My Saved Lists <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;">— ready to order</span></h3>
+      <div id="saved-lists"></div>
+    </div>
+    <div class="settings-section" data-section="history">
+      <h3>📚 Order History <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;">— previously ordered</span></h3>
+      <div id="order-history"></div>
+    </div>
+    <div class="settings-section" data-section="items">
+      <h3>📋 Master Item List <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;">— source of truth for Count + Ordering pages</span></h3>
+      <input type="text" id="item-search" placeholder="Search items..." oninput="renderSettings()" style="width:100%; padding:8px 12px; margin-bottom:10px; border:1px solid var(--border); border-radius:8px; font-size:0.9rem;">
+      <div id="items-table"></div>
+      <button class="add-btn" onclick="alert('Add Item form would open here')">+ Add Item</button>
+    </div>
+    <div class="settings-section" data-section="rooms">
+      <h3>🏠 Room Order <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;">— matches your physical walk-through. Drag up/down to rearrange.</span></h3>
+      <div id="room-order-list"></div>
+    </div>
+    <div class="settings-section" data-section="suppliers">
+      <h3>🏢 Suppliers</h3>
+      <div id="suppliers-list"></div>
+      <button class="add-btn" onclick="alert('Add Supplier form would open here')">+ Add Supplier</button>
+    </div>
+    <div class="settings-section" data-section="tags">
+      <h3>🏷️ Groups / Tags</h3>
+      <div class="settings-row"><span>Dry Goods</span><button class="chip-btn" onclick="alert('Edit Dry Goods')">Edit</button></div>
+      <div class="settings-row"><span>Cleaning</span><button class="chip-btn" onclick="alert('Edit Cleaning')">Edit</button></div>
+      <div class="settings-row"><span>Baking</span><button class="chip-btn" onclick="alert('Edit Baking')">Edit</button></div>
+      <div class="settings-row"><span>Misc</span><button class="chip-btn" onclick="alert('Edit Misc')">Edit</button></div>
+      <button class="add-btn" onclick="alert('Add Tag form')">+ Add Tag</button>
+    </div>
+    <div class="settings-section" data-section="csv">
+      <h3>📥 CSV Import</h3>
+      <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:10px;">Bulk import items from CSV. Columns: name, room, unit, threshold, priority, suppliers, cheapest, grocery_fallback, tags.</p>
+      <input type="file" accept=".csv" style="margin-bottom: 10px;">
+      <button class="add-btn" onclick="alert('Would parse CSV and import items')">Import</button>
+    </div>
+    <div class="settings-section" data-section="sync">
+      <h3>☁️ Railway Cloud Sync</h3>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;line-height:1.4;">
+        Sync state across 2–3 trusted devices. No login. Local changes stay local until you tap <strong>Push</strong>; pulling replaces your local state with what's on the cloud.
+      </p>
+      <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px;">
+        <label style="font-size:0.78rem;font-weight:600;color:var(--text-muted);">Railway URL</label>
+        <input type="text" id="sync-url-input" placeholder="https://bakery-raw-production.up.railway.app"
+               oninput="setRailwayUrl(this.value); renderSettingsSyncCard();"
+               style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">
+      </div>
+      <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:8px;">
+        <label style="font-size:0.78rem;font-weight:600;color:var(--text-muted);">This device's nickname</label>
+        <input type="text" id="sync-nickname-input" placeholder="Kitchen iPad"
+               oninput="setDeviceNickname(this.value);"
+               style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.85rem;">
+        <span style="font-size:0.7rem;color:var(--text-muted);">Shown in other devices' &ldquo;last updated by&rdquo; status.</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button class="add-btn" onclick="pullFromCloud()"
+                style="flex:1;min-width:120px;background:#5a9d78;color:white;font-weight:700;border:2px solid #3d7a52;">⬇ Pull from Cloud</button>
+        <button class="add-btn" onclick="pushToCloud()"
+                style="flex:1;min-width:120px;background:#c8a030;color:#2c1a0e;font-weight:700;border:2px solid #7a5c20;">⬆ Push to Cloud</button>
+      </div>
+      <button class="add-btn" onclick="testCloudConnection()"
+              style="width:100%;margin-top:8px;background:transparent;border:1px dashed var(--border);color:var(--text-muted);">🔌 Test Connection</button>
+      <div id="settings-sync-status" class="sync-status-chip" style="display:block;margin-top:10px;text-align:center;padding:8px;border-radius:8px;">Local only — set Railway URL above to sync</div>
+    </div>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <button class="nav-btn" id="nav-count" onclick="switchTab('count')">
+    <span class="icon">📝</span><span>Count</span>
+  </button>
+  <button class="nav-btn active" id="nav-ordering" onclick="switchTab('ordering')">
+    <span class="icon">📦</span><span>Ordering</span>
+  </button>
+  <button class="nav-btn" id="nav-settings" onclick="switchTab('settings')">
+    <span class="icon">⚙️</span><span>Settings</span>
+  </button>
+</nav>
+
+<script>
+  const CURRENT_DAY = new Date().getDay();
+  const CURRENT_TIME = new Date().toTimeString().slice(0,5);
+
+  const supplierInfo = {
+    "Sysco":     { days: [1,3,5], cutoff: "14:00", deliveryDelayDays: 1, notes: "Main dry goods supplier" },
+    "GFS":       { days: [2,4],   cutoff: "12:00", deliveryDelayDays: 2, notes: "Baking specialty" },
+    "Bulk Barn": { days: [0,1,2,3,4,5,6], cutoff: "23:59", deliveryDelayDays: 0, notes: "Walk-in, anytime" },
+    "Costco":    { days: [0,1,2,3,4,5,6], cutoff: "20:00", deliveryDelayDays: 0, notes: "Grocery fallback" }
+  };
+
+  // Room order — matches physical walk-through in the Numbers sheet.
+  // Real app: seeded from CSV parse, editable in Settings.
+  let roomOrder = ["Dishpit", "Pie Tables", "Storage", "Basement", "Office"];
+
+  const rawItems = [
+    { id: 1, name: "Flour", rooms: ["Basement"], tags: ["Dry Goods"], unit: "bags", threshold: 4, current: 1, priority: 3, cheapest: "Sysco", grocery: true, suppliers: ["Sysco", "GFS", "Bulk Barn"] },
+    { id: 2, name: "Distilled water", rooms: ["Dishpit"], tags: ["Cleaning"], unit: "jugs", threshold: 5, current: 2, priority: 2, cheapest: "", grocery: true, suppliers: ["Costco"] },
+    { id: 3, name: "Final Touch Gold Rinse", rooms: ["Dishpit"], tags: ["Cleaning"], unit: "bucket", threshold: 1, current: 0.25, priority: 3, cheapest: "Sysco", grocery: false, suppliers: ["Sysco"] },
+    { id: 4, name: "Vanilla extract", rooms: ["Pie Tables", "Storage"], tags: ["Baking"], unit: "bottles", threshold: 2, current: 0.75, priority: 2, cheapest: "GFS", grocery: false, suppliers: ["GFS", "Sysco"] },
+    { id: 5, name: "Mop heads", rooms: ["Dishpit"], tags: ["Cleaning"], unit: "new ones", threshold: 5, current: 1, priority: 1, cheapest: "Sysco", grocery: true, suppliers: ["Sysco", "Bulk Barn"] },
+    { id: 6, name: "Marshmallows", rooms: ["Storage"], tags: ["Baking"], unit: "bags", threshold: 3, current: 0, priority: 1, cheapest: "Sysco", grocery: true, suppliers: ["Sysco", "Costco"] },
+    { id: 7, name: "Pizza sauce", rooms: ["Storage"], tags: ["Dry Goods"], unit: "cans", threshold: 6, current: 2, priority: 2, cheapest: "GFS", grocery: true, suppliers: ["Sysco", "GFS", "Bulk Barn"] },
+    { id: 8, name: "Custom-only test item", rooms: ["Office"], tags: ["Misc"], unit: "units", threshold: 2, current: 0, priority: 3, cheapest: "", grocery: false, suppliers: [] }
+  ];
+
+  let currentGroupMode = 'raw';
+  let tagFilter = '__all__';
+  let pendingLists = {}; // { supplierName: Set of itemIds }
+
+  function populateTagDropdown() {
+    const sel = document.getElementById('btn-group-tag');
+    if (!sel) return;
+    const tags = [...new Set(rawItems.flatMap(i => i.tags))].sort();
+    sel.innerHTML = `<option value="">— By Tag —</option><option value="__all__">All tags (grouped)</option>` +
+      tags.map(t => `<option value="${t}">${t}</option>`).join('');
+  }
+  let countGroupMode = 'room';
+  let countTagFilter = '__all__';
+
+  function populateCountTagDropdown() {
+    const sel = document.getElementById('btn-count-tag');
+    if (!sel) return;
+    const tags = [...new Set(rawItems.flatMap(i => i.tags))].sort();
+    sel.innerHTML = `<option value="">— By Tag —</option><option value="__all__">All tags (grouped)</option>` +
+      tags.map(t => `<option value="${t}">${t}</option>`).join('');
+  }
+
+  function setCountGroup(m, tagVal) {
+    if (m === 'tag') {
+      if (!tagVal) return;
+      countTagFilter = tagVal;
+    }
+    countGroupMode = m;
+    ['room','supplier','tag','all'].forEach(x => {
+      const el = document.getElementById(`btn-count-${x}`);
+      if (el) el.classList.toggle('active', x === m);
+    });
+    renderCount();
+  }
+  let processedItems = [];
+  let orderState = {};
+  let countState = {};
+  let expandedSuppliers = {};
+  let currentTab = 'ordering';
+  let savedLists = []; // [{ id, savedAt, suppliers: { supName: [{id,name,qty,unit}, ...] } }]
+  let orderHistory = []; // [{ supplier, items, savedAt, orderedAt }]
+
+  function parseTime(t) { const [h,m] = t.split(':').map(Number); return h*60+m; }
+
+  const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  function isSupplierAvailable(name) {
+    const s = supplierInfo[name];
+    if (!s) return { available: false, reason: "Not configured" };
+    if (!s.days.includes(CURRENT_DAY)) return { available: false, reason: "Closed today" };
+    if (parseTime(CURRENT_TIME) > parseTime(s.cutoff)) return { available: false, reason: `Cutoff passed (${s.cutoff})` };
+    return { available: true, reason: `Cutoff ${s.cutoff}` };
+  }
+
+  function getNextCutoff(name) {
+    const s = supplierInfo[name];
+    if (!s) return { daysAway: 999, label: 'No supplier configured', isToday: false };
+    const todayPassed = !s.days.includes(CURRENT_DAY) || parseTime(CURRENT_TIME) > parseTime(s.cutoff);
+    if (!todayPassed) return { daysAway: 0, label: `TODAY by ${s.cutoff}`, isToday: true };
+    for (let i = 1; i <= 7; i++) {
+      const d = (CURRENT_DAY + i) % 7;
+      if (s.days.includes(d)) {
+        return { daysAway: i, label: `${i===1?'Tomorrow':DAY_NAMES[d]} by ${s.cutoff}`, isToday: false };
+      }
+    }
+    return { daysAway: 999, label: 'No upcoming day', isToday: false };
+  }
+
+  function getDeliveryDate(name) {
+    const s = supplierInfo[name];
+    if (!s) return 'unknown';
+    const cutoff = getNextCutoff(name);
+    if (cutoff.daysAway >= 999) return 'unknown';
+    const delay = s.deliveryDelayDays ?? 1;
+    const total = cutoff.daysAway + delay;
+    const d = new Date();
+    d.setDate(d.getDate() + total);
+    const dayName = DAY_NAMES[d.getDay()];
+    const mo = d.getMonth()+1, da = d.getDate();
+    if (total === 0) return `Today (${dayName} ${mo}/${da})`;
+    if (total === 1) return `Tomorrow (${dayName} ${mo}/${da})`;
+    return `${dayName} ${mo}/${da} (+${total}d)`;
+  }
+
+  function getStockFor(item) {
+    return countState[item.id] !== undefined && countState[item.id] !== '' && !isNaN(countState[item.id])
+      ? parseFloat(countState[item.id]) : item.current;
+  }
+
+  function processData() {
+    processedItems = rawItems
+      .map(item => {
+        item.current = getStockFor(item);
+        return item;
+      })
+      .map(item => {
+        let avail = [], unavail = [];
+        item.suppliers.forEach(n => {
+          const st = isSupplierAvailable(n);
+          const obj = { name: n, available: st.available, reason: st.reason, isCheapest: n === item.cheapest };
+          (st.available ? avail : unavail).push(obj);
+        });
+        avail.sort((a,b) => (b.isCheapest?1:0) - (a.isCheapest?1:0));
+        if (avail.length) avail[0].recommended = true;
+        const all = [...avail, ...unavail];
+        const isActionNeeded = item.suppliers.length === 0;
+        if (!orderState[item.id]) {
+          orderState[item.id] = {
+            qty: Math.ceil(Math.max(0, item.threshold - item.current)),
+            supplier: avail.length ? avail[0].name : (all.length ? all[0].name : null)
+          };
+        }
+        return { ...item, processedSuppliers: all, isActionNeeded };
+      });
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+    ['count','ordering','settings'].forEach(t => {
+      document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
+      document.getElementById(`nav-${t}`).classList.toggle('active', t === tab);
+    });
+    document.getElementById('page-title').textContent =
+      tab === 'count' ? 'Raw Inventory Count' :
+      tab === 'settings' ? 'Raw Settings' : 'Raw Ordering';
+    document.getElementById('ordering-controls').classList.toggle('hidden', tab !== 'ordering');
+    document.getElementById('count-controls').classList.toggle('hidden', tab !== 'count');
+    // Order-date picker lives in the header and is only relevant on the Ordering tab.
+    // The Count tab has its OWN picker inside its content (separate dismiss state).
+    document.getElementById('order-date-wrap').classList.toggle('hidden', tab !== 'ordering');
+    render();
+  }
+
+  function setGroupMode(m, tagVal) {
+    if (m === 'tag') {
+      if (!tagVal) return; // empty placeholder chosen, ignore
+      tagFilter = tagVal;
+    }
+    currentGroupMode = m;
+    ['raw','room','supplier','tag','priority'].forEach(x => {
+      const el = document.getElementById(`btn-group-${x}`);
+      if (el) el.classList.toggle('active', x === m);
+    });
+    render();
+  }
+
+  function toggleExpand(id) { expandedSuppliers[id] = !expandedSuppliers[id]; render(); }
+  function updateQty(id, d) {
+    const n = orderState[id].qty + d;
+    if (n >= 0) { orderState[id].qty = n; const input = document.querySelector(`input[data-qty-id="${id}"]`); if (input) input.value = n; renderSummary(); }
+  }
+  function setQty(id, v) { const n = parseFloat(v)||0; orderState[id].qty = Math.max(0,n); renderSummary(); }
+  function setSupplier(id, name) { orderState[id].supplier = name; renderSummary(); }
+  function setCount(id, v) { countState[id] = parseFloat(v); render(); }
+  function stepCount(id, d) {
+    const cur = (!isNaN(countState[id]) && countState[id] !== '' && countState[id] !== undefined) ? parseFloat(countState[id]) : 0;
+    countState[id] = Math.max(0, cur + d);
+    render();
+  }
+
+  function getPriorityBadge(p) {
+    if (p===1) return `<span class="badge p1">P1</span>`;
+    if (p===2) return `<span class="badge p2">P2</span>`;
+    if (p===3) return `<span class="badge p3">P3</span>`;
+    return '';
+  }
+
+  function renderCard(item) {
+    const state = orderState[item.id];
+    const sups = item.processedSuppliers;
+    const need = Math.max(0, Math.ceil(item.threshold - item.current));
+    const noNeed = need === 0;
+
+    const locationHtml = item.rooms.length > 1
+      ? `<span class="badge multi">📍 ${item.rooms.length} rms</span>`
+      : `<span class="badge">📍 ${item.rooms[0]}</span>`;
+
+    let icons = '';
+    const cheapestSup = sups.find(s => s.isCheapest);
+    const recSup = sups.find(s => s.recommended);
+    if (cheapestSup) icons += `<span title="Usually cheapest: ${cheapestSup.name}">💰</span>`;
+    if (recSup) icons += `<span title="Recommended: ${recSup.name}">🥇</span>`;
+    if (item.grocery) icons += `<span title="Grocery fallback OK">🛒</span>`;
+
+    let supplierSelect;
+    if (!sups.length) {
+      supplierSelect = `<div><select class="supplier-select no-sup" disabled><option>⚠ none</option></select></div>`;
+    } else {
+      const selectedSup = sups.find(s => s.name === state.supplier);
+      const warnHtml = (selectedSup && !selectedSup.available)
+        ? `<div style="font-size:0.7rem;font-weight:700;color:var(--danger);margin-top:2px;line-height:1.1;">⚠ ${selectedSup.reason} — next: ${getNextCutoff(selectedSup.name).label}</div>`
+        : '';
+      supplierSelect = `<div>
+        <select class="supplier-select ${selectedSup&&!selectedSup.available?'no-sup':''}" onchange="setSupplier(${item.id}, this.value)">
+          ${sups.map(s => `<option value="${s.name}" ${state.supplier===s.name?'selected':''}>
+            ${s.name}${s.isCheapest?' 💰':''}${s.recommended?' 🥇':''}${!s.available?` ⚠ ${s.reason}`:''}
+          </option>`).join('')}
+        </select>
+        ${warnHtml}
+      </div>`;
+    }
+
+    const canSendNow = state.supplier && getNextCutoff(state.supplier).isToday && need > 0;
+
+    return `
+      <div id="item-row-${item.id}" class="order-row ${item.isActionNeeded?'action-needed':''} ${noNeed?'no-need':''}">
+        <div class="col-num col-thresh" title="Threshold">${item.threshold}</div>
+        <div class="col-num col-stock" title="In stock">${item.current}</div>
+        <div class="col-num col-need ${need>0&&item.priority>=3?'urgent':''} ${noNeed?'zero':''}" title="Need to order" style="display:flex;gap:3px;padding:2px;align-items:stretch;">
+          <button onclick="updateQty(${item.id}, -1)" style="flex:0 0 32px;border:none;background:rgba(0,0,0,0.06);border-radius:4px;font-size:1.1rem;font-weight:700;color:inherit;cursor:pointer;">−</button>
+          <input type="number" data-qty-id="${item.id}" value="${state.qty}" onchange="setQty(${item.id}, this.value)" style="flex:1;min-width:0;border:none;background:transparent;text-align:center;font-weight:700;font-size:0.95rem;color:inherit;">
+          <button onclick="updateQty(${item.id}, 1)" style="flex:0 0 32px;border:none;background:rgba(0,0,0,0.06);border-radius:4px;font-size:1.1rem;font-weight:700;color:inherit;cursor:pointer;">+</button>
+        </div>
+        <div class="col-name">
+          <div class="col-name-text">${item.name} <span class="row-icons">${icons}</span>
+            ${state.qty===0 && need>0 ? `<button onclick="setQty(${item.id}, ${need})" style="margin-left:6px;padding:2px 8px;border:1px solid var(--primary);background:#fff;color:var(--primary);border-radius:10px;font-size:0.7rem;font-weight:600;cursor:pointer;">➕ Add ${need}</button>` : ''}
+          </div>
+          <div class="col-name-meta">
+            <button onclick="openItemEditor(${item.id})" title="Edit priority, tags, threshold, notes" style="border:1px solid var(--border);background:#fff;border-radius:4px;padding:1px 5px;font-size:0.75rem;cursor:pointer;margin-right:4px;">⚙️</button>
+            ${getPriorityBadge(item.priority)}${locationHtml}${item.tags.map(t=>`<span class="badge">${t}</span>`).join('')}
+          </div>
+        </div>
+        <div>
+          ${supplierSelect}
+          <button onclick="sendItemToList(${item.id})" ${(!state.supplier||state.qty<=0)?'disabled':''} style="margin-top:4px;width:100%;padding:4px 8px;border:1px solid #6b7280;background:#9ca3af;color:#f3f4f6;border-radius:6px;font-size:0.65rem;font-weight:500;cursor:pointer;opacity:0.5;${(!state.supplier||state.qty<=0)?'opacity:0.25;cursor:not-allowed;':''}">➡ send individually</button>
+        </div>
+      </div>`;
+  }
+
+  function isItemPending(id) {
+    for (const sup of Object.keys(pendingLists)) {
+      if (pendingLists[sup] && pendingLists[sup].includes(id)) return true;
+    }
+    return false;
+  }
+
+  function renderOrdering() {
+    const container = document.getElementById('main-content');
+    container.innerHTML = '';
+
+    // Hide items that are already sent to a pending list — they live on the right now.
+    const visibleItems = processedItems.filter(i => !isItemPending(i.id));
+    const normal = visibleItems.filter(i=>!i.isActionNeeded);
+    const action = visibleItems.filter(i=>i.isActionNeeded);
+
+    // Header row for the columns
+    const headerRow = `<div class="order-row" style="background:var(--primary);color:white;font-weight:700;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.5px;">
+      <div class="col-num" style="background:transparent;color:white;">Need</div>
+      <div class="col-num" style="background:transparent;color:white;">Stock</div>
+      <div class="col-num" style="background:transparent;color:white;">Order</div>
+      <div>Item</div>
+      <div>Supplier + Send</div>
+    </div>`;
+
+    if (currentGroupMode === 'raw') {
+      container.innerHTML = headerRow + visibleItems.map(renderCard).join('');
+      renderSummary();
+      return;
+    }
+
+    if (currentGroupMode === 'supplier') {
+      const groups = {};
+      const none = [];
+      visibleItems.forEach(it => {
+        if (!it.suppliers.length) { none.push(it); return; }
+        it.suppliers.forEach(s => { (groups[s] = groups[s]||[]).push(it); });
+      });
+      let html = '';
+      for (const sup of Object.keys(groups)) {
+        const cutoff = getNextCutoff(sup);
+        const deliv = getDeliveryDate(sup);
+        html += `<h2 class="group-title">📦 ${sup} <span style="font-size:0.75rem;font-weight:500;">· ⏰ <span style="color:#b03030;font-weight:700;">${cutoff.label}</span> · 🚚 <span style="color:#2e7a3d;font-weight:700;">${deliv}</span></span></h2>${headerRow}${groups[sup].map(renderCard).join('')}`;
+      }
+      if (none.length) html += `<h2 class="group-title" style="color:var(--text-muted);">— No supplier —</h2>${headerRow}${none.map(renderCard).join('')}`;
+      container.innerHTML = html;
+      renderSummary();
+      return;
+    }
+
+    const grouped = (items) => {
+      if (!items.length) return '';
+      if (currentGroupMode === 'priority') {
+        const sorted = [...items].sort((a,b)=>b.priority-a.priority);
+        return headerRow + sorted.map(renderCard).join('');
+      }
+      const groups = {};
+      let filtered = items;
+      if (currentGroupMode === 'tag' && tagFilter !== '__all__') {
+        filtered = items.filter(it => it.tags.includes(tagFilter));
+        if (!filtered.length) return `<p style="color:var(--text-muted);padding:20px;text-align:center;">No items tagged "${tagFilter}".</p>`;
+        return headerRow + filtered.map(renderCard).join('');
+      }
+      filtered.forEach(it => {
+        let keys;
+        if (currentGroupMode === 'room') {
+          keys = it.rooms.length > 1 ? ["Multiple Rooms (Combined)"] : it.rooms;
+        } else {
+          keys = it.tags;
+        }
+        keys.forEach(k => { (groups[k] = groups[k]||[]).push(it); });
+      });
+      const keys = currentGroupMode === 'room'
+        ? [...roomOrder.filter(r => groups[r]), ...Object.keys(groups).filter(k => !roomOrder.includes(k))]
+        : Object.keys(groups);
+      return keys.map(g =>
+        `<h2 class="group-title">${g}</h2>${headerRow}${groups[g].map(renderCard).join('')}`
+      ).join('');
+    };
+
+    container.innerHTML = grouped(normal);
+    if (action.length) {
+      container.innerHTML += `<h2 class="group-title action-needed-header">🚨 Action Needed</h2>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px;">No supplier available or missing config.</p>
+        ${headerRow}${action.map(renderCard).join('')}`;
+    }
+
+    renderSummary();
+  }
+
+  function renderDrafts() {
+    const drafts = {};
+    const noSupplier = [];
+    processedItems.forEach(it => {
+      const sup = orderState[it.id].supplier;
+      if (!sup) { noSupplier.push(it); return; }
+      (drafts[sup] = drafts[sup] || []).push(it);
+    });
+
+    const sorted = Object.entries(drafts)
+      .map(([sup, items]) => ({ sup, items, cutoff: getNextCutoff(sup) }))
+      .sort((a,b) => a.cutoff.daysAway - b.cutoff.daysAway);
+
+    let html = '';
+    sorted.forEach(({ sup, items, cutoff }) => {
+      const urgencyClass = cutoff.isToday ? 'urgent' : cutoff.daysAway <= 2 ? 'upcoming' : '';
+      const statusClass = cutoff.isToday ? 'urgent' : cutoff.daysAway <= 2 ? 'upcoming' : '';
+      const statusLabel = cutoff.isToday ? '🟢 SEND TODAY' : `🟡 Building for ${cutoff.label.replace(' by ', ' · cutoff ')}`;
+      const totalQty = items.reduce((s,it)=>s+orderState[it.id].qty, 0);
+      html += `
+        <div class="draft-section ${urgencyClass}">
+          <div class="draft-header">
+            <div>
+              <div class="draft-title">📦 ${sup} draft</div>
+              <div class="draft-meta">${items.length} items · ${totalQty} units total</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="draft-status ${statusClass}">${statusLabel}</span>
+            </div>
+          </div>
+          <div class="draft-body">${items.map(renderCard).join('')}</div>
+        </div>`;
+    });
+
+    if (noSupplier.length) {
+      html += `
+        <div class="draft-section action">
+          <div class="draft-header">
+            <div>
+              <div class="draft-title" style="color:var(--danger);">🚨 Action Needed</div>
+              <div class="draft-meta">${noSupplier.length} items have no supplier or none available</div>
+            </div>
+            <span class="draft-status action">MANUAL</span>
+          </div>
+          <div class="draft-body">${noSupplier.map(renderCard).join('')}</div>
+        </div>`;
+    }
+
+    if (!html) html = `<p style="text-align:center;color:var(--text-muted);padding:40px;">No items below threshold. All stocked! 🎉</p>`;
+    return html;
+  }
+
+  function sendItem(id) {
+    const it = processedItems.find(i => i.id === id);
+    const s = orderState[id];
+    alert(`📤 SENDING SINGLE ITEM\n\nTo: ${s.supplier}\n• ${it.name} — ${s.qty} ${it.unit}\n\n(In real app: sent immediately, removed from draft)`);
+    orderState[id].qty = 0;
+    render();
+  }
+
+  function deleteOrderLine(id) {
+    orderState[id].qty = 0;
+    render();
+  }
+
+  function sendCountToOrder() {
+    const counted = Object.values(countState).filter(v => !isNaN(v) && v !== '' && v !== null).length;
+    alert(`✅ Count complete (${counted}/${rawItems.length} items counted)\n\nSent to Manager's Order sheet.\nSwitching to Ordering tab...`);
+    switchTab('ordering');
+  }
+
+  function sendDraft(sup) {
+    const items = processedItems.filter(it => orderState[it.id].supplier === sup);
+    let txt = `📦 SENDING TO ${sup.toUpperCase()}\n\n`;
+    items.forEach(it => { txt += `  • ${it.name} — ${orderState[it.id].qty} ${it.unit}\n`; });
+    txt += `\n(In real app: emails/prints + clears this draft)`;
+    alert(txt);
+  }
+
+  function renderSummary() {
+    const keys = Object.keys(pendingLists).filter(k => pendingLists[k] && pendingLists[k].length);
+    let html = '';
+    if (!keys.length) {
+      html = `<p style="font-size:0.85rem;color:var(--text-muted);">No lists yet. Tap <strong>➡ Send to List</strong> on a row, or hit <strong>📋 Create Lists</strong> to build from all items with qty + supplier.</p>`;
+    } else {
+      for (const sup of keys) {
+        const cutoff = getNextCutoff(sup);
+        const lines = pendingLists[sup].map(id => {
+          const it = rawItems.find(x => x.id === id);
+          const qty = orderState[id]?.qty || 0;
+          return { id, name: it.name, qty, unit: it.unit };
+        });
+        const delivery = getDeliveryDate(sup);
+        html += `<div class="summary-supplier">
+          <div class="summary-supplier-name">📦 ${sup} <span class="summary-count">(${lines.length})</span></div>
+          <div style="font-size:0.7rem;color:var(--text-muted);margin:2px 0 4px;line-height:1.35;">
+            <div>⏰ Next cutoff: <strong style="color:#b03030;">${cutoff.label}</strong></div>
+            <div>🚚 Delivery: <strong style="color:#2e7a3d;">${delivery}</strong></div>
+          </div>
+          ${lines.map(l => `<div class="summary-line-row"><span class="summary-line-text" style="text-decoration:underline;">• <strong>${l.name}</strong> — ${l.qty} ${l.unit}</span><button onclick="removeFromPending('${sup}', ${l.id})" title="Send &quot;${l.name}&quot; back to the main list" style="background:#fff;border:1.5px solid #5aa3d1;color:#0d3a5c;font-size:0.7rem;cursor:pointer;padding:3px 8px;line-height:1;border-radius:12px;font-weight:700;white-space:nowrap;">⬅ back</button></div>`).join('')}
+        </div>`;
+      }
+    }
+    document.getElementById('summary-content').innerHTML = html;
+  }
+
+  function sendItemToList(id) {
+    const s = orderState[id];
+    if (!s.supplier || s.qty <= 0) return;
+    if (!pendingLists[s.supplier]) pendingLists[s.supplier] = [];
+    if (pendingLists[s.supplier].includes(id)) {
+      const it = rawItems.find(x => x.id === id);
+      if (!confirm(`⚠️ "${it.name}" is already in ${s.supplier}'s list at qty ${s.qty}.\n\nTap OK to add 1 more (new total ${s.qty + 1}).\nTap Cancel to keep as-is.`)) return;
+      s.qty += 1;
+      const input = document.querySelector(`input[data-qty-id="${id}"]`);
+      if (input) input.value = s.qty;
+      renderSummary();
+      return;
+    }
+    pendingLists[s.supplier].push(id);
+    // Item now lives on the right-side list — remove its row from the main page.
+    const row = document.getElementById(`item-row-${id}`);
+    if (row) row.remove();
+    renderSummary();
+  }
+
+  function createAllLists() {
+    pendingLists = {};
+    processedItems.forEach(it => {
+      const s = orderState[it.id];
+      if (s.qty > 0 && s.supplier) {
+        if (!pendingLists[s.supplier]) pendingLists[s.supplier] = [];
+        pendingLists[s.supplier].push(it.id);
+      }
+    });
+    // Bulk move — re-render so all sent items disappear from main at once.
+    renderOrdering();
+  }
+
+  function removeFromPending(sup, id) {
+    if (!pendingLists[sup]) return;
+    pendingLists[sup] = pendingLists[sup].filter(x => x !== id);
+    if (!pendingLists[sup].length) delete pendingLists[sup];
+    // User pulled item back — re-render so it re-appears in its original spot.
+    renderOrdering();
+  }
+
+  function renderCount() {
+    const c = document.getElementById('count-content');
+    const renderRow = (it) => {
+      const val = countState[it.id] ?? '';
+      const metaBits = [];
+      if (countGroupMode !== 'room') metaBits.push(`📍 ${it.rooms.join(', ')}`);
+      if (countGroupMode !== 'tag' && it.tags.length) metaBits.push(it.tags.join(', '));
+      if (countGroupMode !== 'supplier') metaBits.push(it.suppliers.join(' / ') || 'no supplier');
+      return `<div class="count-row">
+        <div style="flex:1;">
+          <div class="count-name">${it.name}</div>
+          <div class="count-room">${metaBits.join(' · ')}</div>
+        </div>
+        <button class="count-mini-btn" onclick="stepCount(${it.id}, -1)">−</button>
+        <input class="count-input" type="number" step="0.25" value="${val}" placeholder="?" onchange="setCount(${it.id}, this.value)">
+        <button class="count-mini-btn" onclick="stepCount(${it.id}, 1)">+</button>
+        <div class="count-unit">${it.unit}</div>
+      </div>`;
+    };
+
+    let html = '';
+    if (countGroupMode === 'all') {
+      html = rawItems.map(renderRow).join('');
+    } else if (countGroupMode === 'tag' && countTagFilter !== '__all__') {
+      const filtered = rawItems.filter(it => it.tags.includes(countTagFilter));
+      html = filtered.length
+        ? `<h2 class="group-title">${countTagFilter}</h2>` + filtered.map(renderRow).join('')
+        : `<p style="padding:20px;color:var(--text-muted);">No items tagged "${countTagFilter}".</p>`;
+    } else {
+      const groups = {};
+      const ungrouped = [];
+      rawItems.forEach(it => {
+        let keys = [];
+        if (countGroupMode === 'room') keys = it.rooms;
+        else if (countGroupMode === 'supplier') keys = it.suppliers;
+        else if (countGroupMode === 'tag') keys = it.tags;
+        if (!keys.length) ungrouped.push(it);
+        else keys.forEach(k => { (groups[k] = groups[k]||[]).push(it); });
+      });
+      const keys = countGroupMode === 'room'
+        ? [...roomOrder.filter(r => groups[r]), ...Object.keys(groups).filter(k => !roomOrder.includes(k))]
+        : Object.keys(groups);
+      for (const g of keys) {
+        html += `<h2 class="group-title">${g}</h2>` + groups[g].map(renderRow).join('');
+      }
+      if (ungrouped.length) {
+        const label = countGroupMode === 'supplier' ? 'No supplier assigned' :
+                      countGroupMode === 'tag' ? 'Not in any tag group' : 'No room';
+        html += `<h2 class="group-title" style="color:var(--text-muted);border-top:2px dashed var(--border);padding-top:14px;margin-top:24px;">— ${label} —</h2>`;
+        html += ungrouped.map(renderRow).join('');
+      }
+    }
+
+    c.innerHTML = html;
+    const counted = Object.values(countState).filter(v => !isNaN(v) && v !== null && v !== '').length;
+    document.getElementById('count-progress').textContent = counted;
+    document.getElementById('count-total').textContent = rawItems.length;
+  }
+
+  let collapsedSaved = {}; // { entryId: true }
+  let collapsedHistory = {}; // { entryId: true }
+
+  function toggleSavedCollapse(id) {
+    collapsedSaved[id] = !collapsedSaved[id];
+    renderSavedLists();
+  }
+
+  function toggleHistoryCollapse(id) {
+    collapsedHistory[id] = !collapsedHistory[id];
+    renderOrderHistory();
+  }
+
+  function renderSavedLists() {
+    const el = document.getElementById('saved-lists');
+    if (!savedLists.length) { el.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">No saved lists yet. Build one on the Ordering tab and tap 💾 Save Lists.</p>`; return; }
+    el.innerHTML = [...savedLists].reverse().map(entry => {
+      const d = new Date(entry.savedAt);
+      const dayName = DAY_NAMES[d.getDay()];
+      const dateStr = `${dayName} ${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`;
+      const timeStr = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+      const collapsed = !!collapsedSaved[entry.id];
+      const supEntries = Object.entries(entry.suppliers);
+      const totalItems = supEntries.reduce((n,[,arr]) => n + arr.length, 0);
+      const supCount = supEntries.length;
+
+      const supplierBlocks = supEntries.map(([sup, items]) => {
+        const cutoff = getNextCutoff(sup);
+        const delivery = getDeliveryDate(sup);
+        return `
+          <div style="margin-top:10px;padding:10px;background:#f5ede0;border:1.5px solid #7a4f2e;border-radius:10px;">
+            <div style="background:#c7e4f5;border:2px solid #5aa3d1;border-radius:8px;padding:8px 10px;margin:-4px -4px 8px -4px;">
+              <div style="font-weight:800;font-size:0.95rem;color:#0d3a5c;">📦 ${sup} <span style="font-size:0.72rem;font-weight:500;opacity:0.75;">· ${items.length} items</span></div>
+              <div style="font-size:0.7rem;color:#0d3a5c;margin-top:2px;">⏰ Cutoff: <strong style="color:#b03030;">${cutoff.label}</strong></div>
+              <div style="font-size:0.7rem;color:#0d3a5c;margin-top:1px;">🚚 Delivery: <strong style="color:#2e7a3d;">${delivery}</strong></div>
+            </div>
+            <div style="background:white;border-radius:6px;padding:8px;">
+              ${items.map(li => `
+                <div class="summary-line-row">
+                  <span class="summary-line-text" style="text-decoration:underline;">• <strong>${li.name}</strong> — ${li.qty} ${li.unit}</span>
+                  <button class="delete-line-btn" onclick="deleteSavedListItem('${entry.id}', '${sup}', ${li.id})" title="Remove">✕</button>
+                </div>`).join('')}
+            </div>
+          </div>`;
+      }).join('');
+
+      return `
+        <div style="margin-bottom:18px;padding:10px;background:#ebe0ce;border:2px solid #7a4f2e;border-radius:10px;box-shadow:0 3px 6px rgba(0,0,0,0.12);">
+          <div onclick="toggleSavedCollapse('${entry.id}')" style="background:#8cc5e8;border:2px solid #2c6a9a;border-radius:8px;padding:10px 12px;margin:-4px -4px 8px -4px;cursor:pointer;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:900;font-size:1.35rem;color:#b03030;line-height:1.1;letter-spacing:0.3px;">📅 ${dateStr}</div>
+                <div style="font-size:0.7rem;color:#b03030;font-weight:700;margin-top:2px;">@ ${timeStr}</div>
+                <div style="font-weight:700;font-size:0.85rem;color:#0d3a5c;margin-top:6px;">${supCount} supplier(s) · ${totalItems} items total</div>
+              </div>
+              <button onclick="event.stopPropagation();toggleSavedCollapse('${entry.id}')" style="background:#fff;border:1px solid #2c6a9a;color:#0d3a5c;padding:6px 12px;border-radius:6px;font-weight:700;cursor:pointer;font-size:1rem;min-width:44px;flex-shrink:0;">${collapsed ? '▸' : '▾'}</button>
+            </div>
+          </div>
+          <div style="display:${collapsed ? 'none' : 'block'};">
+            ${supplierBlocks}
+            <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;">
+              <button class="add-btn" style="background:var(--success);" onclick="markMasterListOrdered('${entry.id}')">✓ Mark All Ordered</button>
+              <button class="chip-btn" style="background:#c7e4f5;border-color:#5aa3d1;color:#0d3a5c;font-weight:700;" onclick="exportMasterListPDF('${entry.id}')">📄 Export PDF</button>
+              <button class="chip-btn" onclick="discardSavedList('${entry.id}')" style="color:#fff;background:var(--danger);border-color:var(--danger);font-weight:700;">🗑️ Delete List</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function exportMasterListPDF(entryId) {
+    const entry = savedLists.find(e => e.id === entryId);
+    if (!entry) return;
+    const d = new Date(entry.savedAt);
+    const dayName = DAY_NAMES[d.getDay()];
+    const dateStr = `${dayName} ${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`;
+    const timeStr = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+    const supEntries = Object.entries(entry.suppliers);
+    const totalItems = supEntries.reduce((n,[,arr]) => n + arr.length, 0);
+
+    const sections = supEntries.map(([sup, items]) => {
+      const cutoff = getNextCutoff(sup);
+      const delivery = getDeliveryDate(sup);
+      return `
+        <h2 style="color:#0d3a5c;background:#c7e4f5;border:2px solid #5aa3d1;padding:8px 10px;border-radius:6px;margin-top:28px;">📦 ${sup}</h2>
+        <div style="font-size:0.9rem;color:#555;margin:8px 0 12px;">
+          <div>⏰ Cutoff: <strong style="color:#b03030;">${cutoff.label}</strong></div>
+          <div>🚚 Expected delivery: <strong style="color:#2e7a3d;">${delivery}</strong></div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr>
+            <th style="text-align:left;background:#fca5a5;color:#7f1d1d;padding:8px;border:1px solid #dc2626;font-weight:700;">#</th>
+            <th style="text-align:left;background:#fca5a5;color:#7f1d1d;padding:8px;border:1px solid #dc2626;font-weight:700;">Item</th>
+            <th style="text-align:left;background:#fca5a5;color:#7f1d1d;padding:8px;border:1px solid #dc2626;font-weight:700;">Qty</th>
+            <th style="text-align:left;background:#fca5a5;color:#7f1d1d;padding:8px;border:1px solid #dc2626;font-weight:700;">Unit</th>
+          </tr></thead>
+          <tbody>
+            ${items.map((li,i) => `<tr><td style="padding:8px;border:1px solid #ccc;">${i+1}</td><td style="padding:8px;border:1px solid #ccc;"><strong>${li.name}</strong></td><td style="padding:8px;border:1px solid #ccc;"><strong>${li.qty}</strong></td><td style="padding:8px;border:1px solid #ccc;">${li.unit}</td></tr>`).join('')}
+          </tbody>
+        </table>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html><head><title>Master Order List — ${dateStr}</title>
+      <style>
+        @media print { @page { margin: 0.5in; } }
+        body { font-family: -apple-system, system-ui, sans-serif; max-width: 760px; margin: 20px auto; padding: 20px; color:#222; }
+        h1 { color:#b03030; border-bottom:3px solid #b03030; padding-bottom:8px; margin-bottom:4px; font-size:2rem; }
+        .meta { color:#555; font-size:0.95rem; margin-bottom:10px; }
+        .meta strong { color:#0d3a5c; }
+        .print-btn { display:block; margin:20px auto; padding:12px 24px; background:#0d3a5c; color:#fff; border:none; border-radius:8px; font-size:1rem; cursor:pointer; }
+        .footer { margin-top:30px; font-size:0.8rem; color:#888; border-top:1px solid #ccc; padding-top:10px; }
+        @media print { .print-btn { display:none; } }
+      </style></head><body>
+      <h1>📅 ${dateStr}</h1>
+      <div class="meta">
+        <div><strong>Saved at:</strong> ${timeStr}</div>
+        <div><strong>${supEntries.length} supplier(s) · ${totalItems} items total</strong></div>
+      </div>
+      <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+      ${sections}
+      <div class="footer">Generated by Raw Inventory · ${new Date().toLocaleString()}</div>
+      <script>setTimeout(()=>window.print(), 400);<\/script>
+      </body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) { alert('Pop-up blocked. Allow pop-ups to export PDF.'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
+  function renderOrderHistory() {
+    const el = document.getElementById('order-history');
+    if (!orderHistory.length) { el.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">No orders yet.</p>`; return; }
+    el.innerHTML = [...orderHistory].reverse().map(entry => {
+      const d = new Date(entry.orderedAt);
+      const dayName = DAY_NAMES[d.getDay()];
+      const dateStr = `${dayName} ${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`;
+      const timeStr = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+      const collapsed = !!collapsedHistory[entry.id];
+      const supEntries = Object.entries(entry.suppliers || {});
+      const totalItems = supEntries.reduce((n,[,arr]) => n + arr.length, 0);
+      const supCount = supEntries.length;
+
+      const supplierBlocks = supEntries.map(([sup, items]) => {
+        return `
+          <div style="margin-top:10px;padding:10px;background:#ecf4e6;border:1.5px solid #5a7a4f;border-radius:10px;">
+            <div style="background:#c3e0c7;border:2px solid #7aab85;border-radius:8px;padding:8px 10px;margin:-4px -4px 8px -4px;">
+              <div style="font-weight:800;font-size:0.95rem;color:#205529;">📦 ${sup} <span style="font-size:0.72rem;font-weight:500;opacity:0.75;">· ${items.length} items</span></div>
+            </div>
+            <div style="background:white;border-radius:6px;padding:8px;">
+              ${items.map(li => `
+                <div class="summary-line-row">
+                  <span class="summary-line-text" style="text-decoration:underline;">• <strong>${li.name}</strong> — ${li.qty} ${li.unit}</span>
+                </div>`).join('')}
+            </div>
+          </div>`;
+      }).join('');
+
+      return `
+        <div style="margin-bottom:18px;padding:10px;background:#dce8d6;border:2px solid #5a7a4f;border-radius:10px;box-shadow:0 3px 6px rgba(0,0,0,0.12);">
+          <div onclick="toggleHistoryCollapse('${entry.id}')" style="background:#c3e0c7;border:2px solid #7aab85;border-radius:8px;padding:10px 12px;margin:-4px -4px 8px -4px;cursor:pointer;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:900;font-size:1.35rem;color:#205529;line-height:1.1;letter-spacing:0.3px;">✅ ${dateStr}</div>
+                <div style="font-size:0.7rem;color:#205529;font-weight:700;margin-top:2px;">@ ${timeStr}</div>
+                <div style="font-weight:700;font-size:0.85rem;color:#205529;margin-top:6px;">${supCount} supplier(s) · ${totalItems} items ordered</div>
+              </div>
+              <button onclick="event.stopPropagation();toggleHistoryCollapse('${entry.id}')" style="background:#fff;border:1px solid #7aab85;color:#205529;padding:6px 12px;border-radius:6px;font-weight:700;cursor:pointer;font-size:1rem;min-width:44px;flex-shrink:0;">${collapsed ? '▸' : '▾'}</button>
+            </div>
+          </div>
+          <div style="display:${collapsed ? 'none' : 'block'};">
+            ${supplierBlocks}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function moveRoom(idx, dir) {
+    const j = idx + dir;
+    if (j < 0 || j >= roomOrder.length) return;
+    [roomOrder[idx], roomOrder[j]] = [roomOrder[j], roomOrder[idx]];
+    renderSettings();
+  }
+
+  function renderSettings() {
+    renderSavedLists();
+    renderOrderHistory();
+    document.getElementById('room-order-list').innerHTML = roomOrder.map((r, i) => `
+      <div class="settings-row">
+        <div style="font-weight:600;">${i+1}. ${r}</div>
+        <div style="display:flex;gap:6px;">
+          <button class="chip-btn" style="min-height:32px;padding:0 10px;" onclick="moveRoom(${i}, -1)" ${i===0?'disabled style="opacity:0.3;"':''}>↑</button>
+          <button class="chip-btn" style="min-height:32px;padding:0 10px;" onclick="moveRoom(${i}, 1)" ${i===roomOrder.length-1?'disabled style="opacity:0.3;"':''}>↓</button>
+        </div>
+      </div>
+    `).join('');
+
+    const list = document.getElementById('suppliers-list');
+    list.innerHTML = Object.entries(supplierInfo).map(([name, info]) => `
+      <div class="settings-row">
+        <div>
+          <div style="font-weight:600;">${name}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);">${info.notes} · Cutoff ${info.cutoff} · Days: ${info.days.map(d=>['Su','M','T','W','Th','F','Sa'][d]).join(',')} · Delivery: +${info.deliveryDelayDays ?? 1}d</div>
+        </div>
+        <button class="chip-btn" onclick="alert('Edit ${name}')">Edit</button>
+      </div>
+    `).join('');
+
+    const search = (document.getElementById('item-search')?.value || '').toLowerCase();
+    const filtered = rawItems.filter(it =>
+      !search || it.name.toLowerCase().includes(search) ||
+      it.rooms.some(r=>r.toLowerCase().includes(search)) ||
+      it.tags.some(t=>t.toLowerCase().includes(search))
+    );
+    document.getElementById('items-table').innerHTML = `
+      <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+        <thead>
+          <tr style="background:var(--bg); text-align:left;">
+            <th style="padding:8px;">Name</th>
+            <th style="padding:8px;">Room(s)</th>
+            <th style="padding:8px;">Unit</th>
+            <th style="padding:8px;">Threshold</th>
+            <th style="padding:8px;">Priority</th>
+            <th style="padding:8px;">Suppliers</th>
+            <th style="padding:8px;">Tags</th>
+            <th style="padding:8px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+        ${filtered.map(it => `
+          <tr id="item-row-${it.id}" style="border-bottom:1px solid var(--border);">
+            <td style="padding:8px; font-weight:600;">${it.name}</td>
+            <td style="padding:8px;">${it.rooms.join(', ')}</td>
+            <td style="padding:8px;">${it.unit}</td>
+            <td style="padding:8px;">${it.threshold}</td>
+            <td style="padding:8px;">${getPriorityBadge(it.priority)}</td>
+            <td style="padding:8px; font-size:0.75rem;">${it.suppliers.join(', ') || '<span style="color:var(--danger);">none</span>'}</td>
+            <td style="padding:8px; font-size:0.75rem;">${it.tags.join(', ')}</td>
+            <td style="padding:8px;"><button class="chip-btn" style="min-height:32px;padding:0 10px;" onclick="alert('Edit ${it.name} drawer')">Edit</button></td>
+          </tr>
+        `).join('')}
+        </tbody>
+      </table>
+      </div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:8px;">Showing ${filtered.length} of ${rawItems.length} items</div>
+    `;
+  }
+
+  function render() {
+    processData();
+    if (currentTab === 'ordering') renderOrdering();
+    else if (currentTab === 'count') renderCount();
+    else if (currentTab === 'settings') renderSettings();
+  }
+
+  function saveAllLists() {
+    const keys = Object.keys(pendingLists).filter(k => pendingLists[k] && pendingLists[k].length);
+    if (!keys.length) {
+      alert('No lists yet. Tap ➡ Send to List on rows, or hit 📋 Create Lists first.');
+      return;
+    }
+    const bySup = {};
+    keys.forEach(sup => {
+      bySup[sup] = pendingLists[sup].map(id => {
+        const it = rawItems.find(x => x.id === id);
+        return { id, name: it.name, qty: orderState[id].qty, unit: it.unit };
+      });
+    });
+    finalizeSave(bySup);
+  }
+
+  function finalizeSave(bySup) {
+    const now = new Date().toISOString();
+    const entry = { id: 'L' + Date.now(), savedAt: now, suppliers: {} };
+    let savedCount = 0;
+    for (const [sup, items] of Object.entries(bySup)) {
+      entry.suppliers[sup] = items;
+      savedCount += items.length;
+      items.forEach(li => { orderState[li.id].qty = 0; });
+    }
+    savedLists.push(entry);
+    pendingLists = {};
+    closeModal();
+    alert(`✅ Master list saved — ${savedCount} item(s) across ${Object.keys(bySup).length} supplier(s).\n\nView in Settings → My Saved Lists.`);
+    render();
+  }
+
+  function showOrphanModal(orphanIds, onContinue) {
+    const items = orphanIds.map(id => rawItems.find(it => it.id === id)).filter(Boolean);
+    const body = `
+      <h3>⚠️ ${items.length} item(s) have no supplier</h3>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">
+        These items won't be saved to any list. Add a supplier to include them:
+      </p>
+      ${items.map(it => `
+        <div class="modal-orphan-row">
+          <div><strong>${it.name}</strong><div style="font-size:0.7rem;color:var(--text-muted);">${it.rooms.join(', ')}</div></div>
+          <button class="modal-btn primary" style="flex:0 0 auto;padding:8px 12px;min-height:36px;" onclick="fixItemSupplier(${it.id})">➤ Add supplier</button>
+        </div>
+      `).join('')}
+      <div class="modal-actions">
+        <button class="modal-btn secondary" onclick="closeModal()">← Go back and fix</button>
+        <button class="modal-btn danger" onclick='finalizeSaveOrphanFlow()'>Save without these</button>
+      </div>`;
+    openModal(body);
+    window._pendingBySup = arguments[1] || null;
+    window._orphanContinue = onContinue;
+  }
+
+  function finalizeSaveOrphanFlow() {
+    if (window._orphanContinue) window._orphanContinue();
+  }
+
+  function openModal(html) {
+    let el = document.getElementById('global-modal');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'global-modal';
+      el.className = 'modal-backdrop';
+      el.onclick = (e) => { if (e.target === el) closeModal(); };
+      document.body.appendChild(el);
+    }
+    el.innerHTML = `<div class="modal">${html}</div>`;
+    el.classList.remove('hidden');
+  }
+
+  function closeModal() {
+    const el = document.getElementById('global-modal');
+    if (el) el.classList.add('hidden');
+  }
+
+  function openItemEditor(id) {
+    const it = rawItems.find(x => x.id === id);
+    if (!it) return;
+    const allTags = [...new Set(rawItems.flatMap(i => i.tags))].sort();
+    const tagChips = allTags.map(t =>
+      `<label style="display:inline-flex;align-items:center;gap:4px;margin:2px;padding:4px 8px;border:1px solid var(--border);border-radius:14px;font-size:0.75rem;cursor:pointer;background:${it.tags.includes(t)?'var(--primary)':'#fff'};color:${it.tags.includes(t)?'#fff':'var(--text)'};">
+        <input type="checkbox" data-tag="${t}" ${it.tags.includes(t)?'checked':''} style="display:none;" onchange="this.parentElement.style.background=this.checked?'var(--primary)':'#fff';this.parentElement.style.color=this.checked?'#fff':'var(--text)';">
+        ${t}
+      </label>`
+    ).join('');
+    const notesVal = it.notes || '';
+    openModal(`
+      <h3 style="margin:0 0 4px;">⚙️ ${it.name}</h3>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 14px;">${it.rooms.join(', ')} · ${it.unit}</p>
+
+      <div style="margin-bottom:14px;">
+        <label style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px;">Priority</label>
+        <div style="display:flex;gap:6px;">
+          ${[1,2,3].map(p => `<button onclick="document.querySelectorAll('[data-pri]').forEach(b=>b.style.background='#fff');this.style.background='var(--primary)';this.style.color='#fff';this.dataset.selected='1';document.querySelectorAll('[data-pri]').forEach(b=>{if(b!==this)b.dataset.selected='0';});" data-pri="${p}" data-selected="${it.priority===p?'1':'0'}" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:${it.priority===p?'var(--primary)':'#fff'};color:${it.priority===p?'#fff':'var(--text)'};font-weight:600;cursor:pointer;">P${p} ${p===1?'(low)':p===2?'(normal)':'(critical)'}</button>`).join('')}
+        </div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px;">Threshold (min on hand)</label>
+        <input type="number" id="edit-threshold" value="${it.threshold}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:1rem;">
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px;">Tags</label>
+        <div>${tagChips}</div>
+        <input type="text" id="edit-new-tag" placeholder="+ add new tag" style="width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;">
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px;">Notes</label>
+        <textarea id="edit-notes" rows="2" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;resize:vertical;">${notesVal}</textarea>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="closeModal()" style="padding:8px 16px;border:1px solid var(--border);background:#fff;border-radius:6px;cursor:pointer;">Cancel</button>
+        <button onclick="saveItemEditor(${id})" style="padding:8px 16px;border:none;background:var(--primary);color:#fff;border-radius:6px;font-weight:700;cursor:pointer;">Save</button>
+      </div>
+    `);
+  }
+
+  function saveItemEditor(id) {
+    const it = rawItems.find(x => x.id === id);
+    if (!it) return;
+    const pri = document.querySelector('[data-pri][data-selected="1"]');
+    if (pri) it.priority = parseInt(pri.dataset.pri);
+    const thr = parseFloat(document.getElementById('edit-threshold').value);
+    if (!isNaN(thr)) it.threshold = thr;
+    const checked = [...document.querySelectorAll('[data-tag]:checked')].map(c => c.dataset.tag);
+    const newTag = document.getElementById('edit-new-tag').value.trim();
+    if (newTag) checked.push(newTag);
+    it.tags = [...new Set(checked)];
+    it.notes = document.getElementById('edit-notes').value;
+    closeModal();
+    processData();
+    populateTagDropdown();
+    populateCountTagDropdown();
+    render();
+  }
+
+  function fixItemSupplier(itemId) {
+    closeModal();
+    switchTab('settings');
+    setTimeout(() => {
+      const search = document.getElementById('item-search');
+      const it = rawItems.find(i => i.id === itemId);
+      if (search && it) { search.value = it.name; renderSettings(); }
+      setTimeout(() => {
+        const row = document.getElementById(`item-row-${itemId}`);
+        if (row) {
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          row.classList.add('item-row-highlight');
+        }
+        openSupplierPicker(itemId);
+      }, 100);
+    }, 50);
+  }
+
+  function openSupplierPicker(itemId) {
+    const it = rawItems.find(i => i.id === itemId);
+    const available = Object.keys(supplierInfo).filter(s => !it.suppliers.includes(s));
+    const body = `
+      <h3 style="color:var(--primary);">Add supplier to "${it.name}"</h3>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">Currently: ${it.suppliers.length ? it.suppliers.join(', ') : 'none'}</p>
+      ${available.length ? available.map(s => `
+        <button class="modal-btn primary" style="width:100%;margin-bottom:6px;text-align:left;" onclick="addSupplierToItem(${itemId}, '${s}')">
+          📦 ${s} <span style="font-size:0.7rem;opacity:0.8;">· ${supplierInfo[s].notes}</span>
+        </button>`).join('') : '<p style="color:var(--text-muted);">All known suppliers already added to this item.</p>'}
+      <div class="modal-actions">
+        <button class="modal-btn secondary" onclick="closeModal()">Close</button>
+      </div>`;
+    openModal(body);
+  }
+
+  function addSupplierToItem(itemId, sup) {
+    const it = rawItems.find(i => i.id === itemId);
+    if (!it.suppliers.includes(sup)) it.suppliers.push(sup);
+    if (!it.cheapest) it.cheapest = sup;
+    // auto-assign this supplier as the item's current choice on the order
+    if (orderState[itemId]) orderState[itemId].supplier = sup;
+    closeModal();
+    alert(`✅ ${sup} added to ${it.name}. Back to Ordering to save your lists.`);
+    switchTab('ordering');
+  }
+
+  function markMasterListOrdered(entryId) {
+    const entry = savedLists.find(e => e.id === entryId);
+    if (!entry) return;
+    const supCount = Object.keys(entry.suppliers).length;
+    const itemCount = Object.values(entry.suppliers).reduce((n, items) => n + items.length, 0);
+    if (!confirm(`Mark the entire master list as ORDERED?\n\nThis will archive ${itemCount} item(s) across ${supCount} supplier(s) to Order History.`)) return;
+    const orderedAt = new Date().toISOString();
+    // Push ONE master entry to orderHistory (same shape as savedLists — keeps Order History mirror-styled)
+    orderHistory.push({
+      id: 'H' + Date.now(),
+      savedAt: entry.savedAt,
+      orderedAt: orderedAt,
+      suppliers: entry.suppliers,
+    });
+    savedLists = savedLists.filter(e => e.id !== entryId);
+    renderSettings();
+    alert(`📦 Master list archived — ${supCount} supplier list(s) moved to Order History.`);
+  }
+
+  function deleteSavedListItem(entryId, sup, itemId) {
+    const entry = savedLists.find(e => e.id === entryId);
+    if (!entry || !entry.suppliers[sup]) return;
+    const item = entry.suppliers[sup].find(i => i.id === itemId);
+    if (!item) return;
+    if (!confirm(`Remove "${item.name}" from the ${sup} section of this saved list?`)) return;
+    entry.suppliers[sup] = entry.suppliers[sup].filter(i => i.id !== itemId);
+    if (!entry.suppliers[sup].length) delete entry.suppliers[sup];
+    if (!Object.keys(entry.suppliers).length) {
+      savedLists = savedLists.filter(e => e.id !== entryId);
+    }
+    renderSettings();
+  }
+
+  function discardSavedList(entryId) {
+    const entry = savedLists.find(e => e.id === entryId);
+    if (!entry) return;
+    const supCount = Object.keys(entry.suppliers).length;
+    const itemCount = Object.values(entry.suppliers).reduce((n, items) => n + items.length, 0);
+    if (!confirm(`⚠️ Delete this ENTIRE master list?\n\n${itemCount} item(s) across ${supCount} supplier(s) will be removed. This cannot be undone.`)) return;
+    savedLists = savedLists.filter(e => e.id !== entryId);
+    renderSettings();
+  }
+
+  function exportOrder() {
+    const bySup = {}; const unassigned = [];
+    processedItems.forEach(it => {
+      const s = orderState[it.id];
+      if (s.qty > 0) {
+        if (s.supplier) (bySup[s.supplier] = bySup[s.supplier]||[]).push(`${it.name} — ${s.qty} ${it.unit}`);
+        else unassigned.push(`${it.name} — ${s.qty} ${it.unit}`);
+      }
+    });
+    let txt = "=== ORDER EXPORT ===\n\n";
+    for (const [sup, lines] of Object.entries(bySup)) {
+      txt += `📦 ${sup.toUpperCase()}\n` + lines.map(l => `  • ${l}`).join('\n') + '\n\n';
+    }
+    if (unassigned.length) txt += `🚨 UNASSIGNED:\n` + unassigned.map(l=>`  • ${l}`).join('\n');
+    alert(txt);
+  }
+
+  // ─── Date pickers: Order and Count have INDEPENDENT dismiss states ──
+  function dismissHint(wrap, storageKey, hintVariant) {
+    if (!wrap || wrap.classList.contains('dismissed')) return;
+    wrap.classList.add('dismissed');
+    const hint = wrap.querySelector('.date-hint');
+    if (hint) hint.textContent = hintVariant === 'count' ? '✓ Count date set' : '✓ Order date set';
+    try { localStorage.setItem(storageKey, new Date().toISOString().slice(0,10)); } catch(e) {}
+  }
+
+  function updateCountDateLabel() {
+    const picker = document.getElementById('count-date');
+    const val = picker ? picker.value : '';
+    const el = document.getElementById('week-label');
+    if (!el) return;
+    if (!val) { el.textContent = '—'; return; }
+    const [y, m, d] = val.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    try {
+      el.textContent = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+    } catch(e) {
+      el.textContent = `${DAY_NAMES[dt.getDay()]} ${m}/${d}/${y}`;
+    }
+  }
+
+  function setupDatePicker({ pickerId, wrapId, storageKey, hintVariant, onChange }) {
+    const picker = document.getElementById(pickerId);
+    const wrap = document.getElementById(wrapId);
+    if (!picker || !wrap) return;
+    const dismiss = () => dismissHint(wrap, storageKey, hintVariant);
+    try {
+      const today = new Date().toISOString().slice(0,10);
+      if (localStorage.getItem(storageKey) === today) dismiss();
+      else setTimeout(dismiss, 30000);
+    } catch(e) {
+      setTimeout(dismiss, 30000);
+    }
+    picker.addEventListener('change', () => { dismiss(); if (onChange) onChange(); });
+    picker.addEventListener('click', dismiss);
+  }
+
+  (function initDatePickers() {
+    setupDatePicker({
+      pickerId: 'order-date', wrapId: 'order-date-wrap',
+      storageKey: 'orderDateHintDismissed', hintVariant: 'order',
+    });
+    setupDatePicker({
+      pickerId: 'count-date', wrapId: 'count-date-wrap',
+      storageKey: 'countDateHintDismissed', hintVariant: 'count',
+      onChange: updateCountDateLabel,
+    });
+    updateCountDateLabel(); // initial sync from count-date's default value
+  })();
+
+  // ========== CLOUD SYNC (bakeryRaw) =====================================
+  // Talks to the /bakeryRaw/state endpoint on a Railway-hosted Node server
+  // (see /Bakery Mega App/server/index.js). No login — 2–3 trusted devices
+  // share state via a single API_SECRET bundled in the HTML. For this scale
+  // that's acceptable; if the device count grows, swap in a real auth layer.
+  const BAKERY_RAW_SECRET = '3zzJMvS72_sjN2oYRGeJhA';
+  const SYNC_LS_URL      = 'bakeryRaw_railwayUrl';
+  const SYNC_LS_DEVICE   = 'bakeryRaw_deviceNickname';
+  const SYNC_LS_STATE    = 'bakeryRaw_lastSyncedState';
+
+  function getRailwayUrl() {
+    try { return (localStorage.getItem(SYNC_LS_URL) || '').trim(); } catch(e) { return ''; }
+  }
+  function setRailwayUrl(url) {
+    try { localStorage.setItem(SYNC_LS_URL, (url || '').trim()); } catch(e) {}
+  }
+  function getDeviceNickname() {
+    try {
+      let nick = localStorage.getItem(SYNC_LS_DEVICE);
+      if (!nick) {
+        nick = 'Device-' + Math.random().toString(36).slice(2, 7);
+        localStorage.setItem(SYNC_LS_DEVICE, nick);
+      }
+      return nick;
+    } catch(e) { return 'Device-unknown'; }
+  }
+  function setDeviceNickname(name) {
+    const clean = (name || '').trim();
+    try { localStorage.setItem(SYNC_LS_DEVICE, clean || ('Device-' + Math.random().toString(36).slice(2, 7))); } catch(e) {}
+  }
+
+  // Everything that should survive across devices. UI state (current tab,
+  // filter mode, dropdown selections) stays local.
+  function getCloudSnapshot() {
+    return {
+      rawItems: JSON.parse(JSON.stringify(rawItems)),
+      pendingLists: JSON.parse(JSON.stringify(pendingLists)),
+      savedLists: JSON.parse(JSON.stringify(savedLists)),
+      orderHistory: JSON.parse(JSON.stringify(orderHistory)),
+      roomOrder: JSON.parse(JSON.stringify(roomOrder)),
+    };
+  }
+
+  // Replaces local state in place so no existing reference goes stale.
+  function applyCloudSnapshot(snap) {
+    if (!snap || typeof snap !== 'object') return false;
+    if (Array.isArray(snap.rawItems)) {
+      rawItems.length = 0;
+      snap.rawItems.forEach(i => rawItems.push(i));
+    }
+    if (snap.pendingLists && typeof snap.pendingLists === 'object') {
+      Object.keys(pendingLists).forEach(k => delete pendingLists[k]);
+      Object.keys(snap.pendingLists).forEach(k => { pendingLists[k] = snap.pendingLists[k]; });
+    }
+    if (Array.isArray(snap.savedLists)) {
+      savedLists.length = 0;
+      snap.savedLists.forEach(i => savedLists.push(i));
+    }
+    if (Array.isArray(snap.orderHistory)) {
+      orderHistory.length = 0;
+      snap.orderHistory.forEach(i => orderHistory.push(i));
+    }
+    if (Array.isArray(snap.roomOrder)) {
+      roomOrder.length = 0;
+      snap.roomOrder.forEach(i => roomOrder.push(i));
+    }
+    processData();
+    return true;
+  }
+
+  function formatSyncTime(iso) {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const date = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return `${time} · ${date}`;
+    } catch(e) { return iso; }
+  }
+
+  function setSyncStatus(state, message) {
+    const palette = {
+      local:  { bg: '#fff8ec', fg: '#7a5c3f', border: '#e6dac3' },
+      saving: { bg: '#fff3cd', fg: '#856404', border: '#e9c44a' },
+      live:   { bg: '#dcf3e1', fg: '#1e5b33', border: '#7aab85' },
+      error:  { bg: '#fde2e2', fg: '#7a1f1f', border: '#b03030' },
+    };
+    const c = palette[state] || palette.local;
+    ['ordering-sync-status', 'count-sync-status', 'settings-sync-status'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = message;
+      el.style.background = c.bg;
+      el.style.color = c.fg;
+      el.style.borderColor = c.border;
+    });
+  }
+
+  async function pullFromCloud() {
+    const url = getRailwayUrl();
+    if (!url) { alert('Set your Railway URL in Settings → ☁️ Railway Cloud Sync first.'); return; }
+    setSyncStatus('saving', 'Pulling from cloud…');
+    try {
+      const r = await fetch(`${url.replace(/\/$/, '')}/bakeryRaw/state?secret=${encodeURIComponent(BAKERY_RAW_SECRET)}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      if (!j.data) {
+        setSyncStatus('local', 'Cloud is empty — push your local state to seed it.');
+        return;
+      }
+      if (!applyCloudSnapshot(j.data)) throw new Error('Cloud payload was malformed');
+      try { localStorage.setItem(SYNC_LS_STATE, JSON.stringify({ at: j.lastUpdatedAt, by: j.lastUpdatedBy })); } catch(e) {}
+      render();
+      setSyncStatus('live', `✅ Pulled · last updated by ${j.lastUpdatedBy || 'unknown'} at ${formatSyncTime(j.lastUpdatedAt)}`);
+    } catch (err) {
+      setSyncStatus('error', '❌ Pull failed: ' + (err.message || 'unknown'));
+    }
+  }
+
+  async function pushToCloud() {
+    const url = getRailwayUrl();
+    if (!url) { alert('Set your Railway URL in Settings → ☁️ Railway Cloud Sync first.'); return; }
+    setSyncStatus('saving', 'Pushing to cloud…');
+    try {
+      const data = getCloudSnapshot();
+      const r = await fetch(`${url.replace(/\/$/, '')}/bakeryRaw/state?secret=${encodeURIComponent(BAKERY_RAW_SECRET)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data, deviceNickname: getDeviceNickname() }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      try { localStorage.setItem(SYNC_LS_STATE, JSON.stringify({ at: j.lastUpdatedAt, by: j.lastUpdatedBy })); } catch(e) {}
+      setSyncStatus('live', `✅ Pushed · now "${j.lastUpdatedBy}" at ${formatSyncTime(j.lastUpdatedAt)}`);
+    } catch (err) {
+      setSyncStatus('error', '❌ Push failed: ' + (err.message || 'unknown'));
+    }
+  }
+
+  async function testCloudConnection() {
+    const url = getRailwayUrl();
+    if (!url) { alert('Enter a Railway URL first.'); return; }
+    setSyncStatus('saving', 'Testing connection…');
+    try {
+      const r = await fetch(`${url.replace(/\/$/, '')}/`, { cache: 'no-store' });
+      const j = await r.json();
+      if (j && j.status === 'ok' && j.service === 'bakery-planner-api') {
+        const note = j.bakeryRaw && j.bakeryRaw.hasData
+          ? `✅ Connected · cloud has data from ${j.bakeryRaw.lastUpdatedBy || '?'} at ${formatSyncTime(j.bakeryRaw.lastUpdatedAt)}`
+          : '✅ Connected · cloud is empty, ready for your first Push';
+        setSyncStatus('live', note);
+      } else {
+        setSyncStatus('error', '⚠️ Reached it but it is not the bakery-planner-api');
+      }
+    } catch (err) {
+      setSyncStatus('error', '❌ Could not connect: ' + (err.message || 'unknown'));
+    }
+  }
+
+  function renderSettingsSyncCard() {
+    // Hydrates the inputs + status chip on load — no network call.
+    const urlInput = document.getElementById('sync-url-input');
+    const nickInput = document.getElementById('sync-nickname-input');
+    if (urlInput) urlInput.value = getRailwayUrl();
+    if (nickInput) nickInput.value = getDeviceNickname();
+    try {
+      const snap = JSON.parse(localStorage.getItem(SYNC_LS_STATE) || 'null');
+      if (snap && snap.at) {
+        setSyncStatus('local', `Last synced · by ${snap.by || 'unknown'} at ${formatSyncTime(snap.at)} — tap Pull to refresh`);
+      } else if (getRailwayUrl()) {
+        setSyncStatus('local', 'Not yet synced — tap Pull Latest to load from cloud');
+      } else {
+        setSyncStatus('local', 'Local only — set Railway URL to sync');
+      }
+    } catch (e) {
+      setSyncStatus('local', 'Local only — set Railway URL to sync');
+    }
+  }
+  // =======================================================================
+
+  processData();
+  populateTagDropdown();
+  populateCountTagDropdown();
+  render();
+  renderSettingsSyncCard();
+</script>
+</body>
+</html>
