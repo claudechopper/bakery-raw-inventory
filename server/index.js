@@ -41,8 +41,15 @@ let bakeryRawStore = loadBakeryRaw();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Health check
+// Serve the frontend HTML app from the parent directory
+// (index.html lives one level up from server/)
+const FRONTEND_HTML = path.join(__dirname, '..', 'index.html');
+
 app.get('/', (req, res) => {
+  if (fs.existsSync(FRONTEND_HTML)) {
+    return res.sendFile(FRONTEND_HTML);
+  }
+  // Fallback health check if HTML not found (local dev without frontend)
   res.json({
     status: 'ok',
     service: 'bakery-raw-inventory-api',
@@ -51,9 +58,13 @@ app.get('/', (req, res) => {
       hasData: !!bakeryRawStore.data,
       lastUpdatedBy: bakeryRawStore.lastUpdatedBy,
       lastUpdatedAt: bakeryRawStore.lastUpdatedAt,
-      stateFile: STATE_FILE,
     },
   });
+});
+
+// Health check (explicit, for Railway uptime checks)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', service: 'bakery-raw-inventory-api' });
 });
 
 app.get('/bakeryRaw/state', (req, res) => {
